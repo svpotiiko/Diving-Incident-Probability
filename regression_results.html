@@ -1,0 +1,93 @@
+<table class="simpletable">
+<caption>Logit Regression Results</caption>
+<tr>
+  <th>Dep. Variable:</th>       <td>Incident</td>     <th>  No. Observations:  </th>  <td>  2500</td>  
+</tr>
+<tr>
+  <th>Model:</th>                 <td>Logit</td>      <th>  Df Residuals:      </th>  <td>  2494</td>  
+</tr>
+<tr>
+  <th>Method:</th>                 <td>MLE</td>       <th>  Df Model:          </th>  <td>     5</td>  
+</tr>
+<tr>
+  <th>Date:</th>            <td>Fri, 03 Oct 2025</td> <th>  Pseudo R-squ.:     </th>  <td>0.1814</td>  
+</tr>
+<tr>
+  <th>Time:</th>                <td>17:04:22</td>     <th>  Log-Likelihood:    </th> <td> -359.14</td> 
+</tr>
+<tr>
+  <th>converged:</th>             <td>True</td>       <th>  LL-Null:           </th> <td> -438.74</td> 
+</tr>
+<tr>
+  <th>Covariance Type:</th>     <td>nonrobust</td>    <th>  LLR p-value:       </th> <td>1.460e-32</td>
+</tr>
+</table>
+<table class="simpletable">
+<tr>
+            <td></td>              <th>coef</th>     <th>std err</th>      <th>z</th>      <th>P>|z|</th>  <th>[0.025</th>    <th>0.975]</th>  
+</tr>
+<tr>
+  <th>Intercept</th>            <td>   -9.7441</td> <td>    0.809</td> <td>  -12.049</td> <td> 0.000</td> <td>  -11.329</td> <td>   -8.159</td>
+</tr>
+<tr>
+  <th>MaxDepth_m</th>           <td>    0.1025</td> <td>    0.016</td> <td>    6.432</td> <td> 0.000</td> <td>    0.071</td> <td>    0.134</td>
+</tr>
+<tr>
+  <th>BottomTime_min</th>       <td>    0.0573</td> <td>    0.011</td> <td>    5.333</td> <td> 0.000</td> <td>    0.036</td> <td>    0.078</td>
+</tr>
+<tr>
+  <th>AscentRate_m_per_min</th> <td>    0.1175</td> <td>    0.022</td> <td>    5.408</td> <td> 0.000</td> <td>    0.075</td> <td>    0.160</td>
+</tr>
+<tr>
+  <th>SafetyStop</th>           <td>   -0.7504</td> <td>    0.227</td> <td>   -3.302</td> <td> 0.001</td> <td>   -1.196</td> <td>   -0.305</td>
+</tr>
+<tr>
+  <th>NDL_Violation</th>        <td>    0.6265</td> <td>    0.345</td> <td>    1.815</td> <td> 0.070</td> <td>   -0.050</td> <td>    1.303</td>
+</tr>
+</table><br><br><table class="simpletable">
+<caption>Probit Regression Results</caption>
+<tr>
+  <th>Dep. Variable:</th>       <td>Incident</td>     <th>  No. Observations:  </th>  <td>  2500</td>  
+</tr>
+<tr>
+  <th>Model:</th>                <td>Probit</td>      <th>  Df Residuals:      </th>  <td>  2494</td>  
+</tr>
+<tr>
+  <th>Method:</th>                 <td>MLE</td>       <th>  Df Model:          </th>  <td>     5</td>  
+</tr>
+<tr>
+  <th>Date:</th>            <td>Fri, 03 Oct 2025</td> <th>  Pseudo R-squ.:     </th>  <td>0.1790</td>  
+</tr>
+<tr>
+  <th>Time:</th>                <td>17:04:22</td>     <th>  Log-Likelihood:    </th> <td> -360.21</td> 
+</tr>
+<tr>
+  <th>converged:</th>             <td>True</td>       <th>  LL-Null:           </th> <td> -438.74</td> 
+</tr>
+<tr>
+  <th>Covariance Type:</th>     <td>nonrobust</td>    <th>  LLR p-value:       </th> <td>4.162e-32</td>
+</tr>
+</table>
+<table class="simpletable">
+<tr>
+            <td></td>              <th>coef</th>     <th>std err</th>      <th>z</th>      <th>P>|z|</th>  <th>[0.025</th>    <th>0.975]</th>  
+</tr>
+<tr>
+  <th>Intercept</th>            <td>   -4.8220</td> <td>    0.387</td> <td>  -12.445</td> <td> 0.000</td> <td>   -5.581</td> <td>   -4.063</td>
+</tr>
+<tr>
+  <th>MaxDepth_m</th>           <td>    0.0490</td> <td>    0.008</td> <td>    6.084</td> <td> 0.000</td> <td>    0.033</td> <td>    0.065</td>
+</tr>
+<tr>
+  <th>BottomTime_min</th>       <td>    0.0271</td> <td>    0.005</td> <td>    5.201</td> <td> 0.000</td> <td>    0.017</td> <td>    0.037</td>
+</tr>
+<tr>
+  <th>AscentRate_m_per_min</th> <td>    0.0580</td> <td>    0.011</td> <td>    5.327</td> <td> 0.000</td> <td>    0.037</td> <td>    0.079</td>
+</tr>
+<tr>
+  <th>SafetyStop</th>           <td>   -0.3737</td> <td>    0.108</td> <td>   -3.455</td> <td> 0.001</td> <td>   -0.586</td> <td>   -0.162</td>
+</tr>
+<tr>
+  <th>NDL_Violation</th>        <td>    0.2426</td> <td>    0.157</td> <td>    1.546</td> <td> 0.122</td> <td>   -0.065</td> <td>    0.550</td>
+</tr>
+</table>
