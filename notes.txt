@@ -1,0 +1,30 @@
+Structure
+ 
+dive-risk/
+├─ data/                         # input/output data
+├─ outputs/                      # plots, reports, csvs
+├─ config/
+│  └─ settings.yaml              # paths, model formula, cv params, thresholds
+├─ src/
+│  ├─ __init__.py
+│  ├─ io_utils.py                # loading/saving, paths, config
+│  ├─ features.py                # feature engineering
+│  ├─ modeling.py                # fit logit/probit, marginal effects, odds ratios
+│  ├─ metrics.py                 # HL test, confusion, CV, metrics table
+│  ├─ viz.py                     # all matplotlib/seaborn plotting
+│  ├─ report.py                  # HTML report assembly
+│  └─ pipeline.py                # orchestrates end-to-end run (no CLI)
+├─ main.py                       # CLI entrypoint (runs pipeline with config)
+├─ requirements.txt
+└─ README.md
+
+Completed files
+settings.yaml
+__init__.py
+io_utils.py
+viz.py
+metrics.py    
+modeling.py
+features.py  
+report.py
+pipeline.py
