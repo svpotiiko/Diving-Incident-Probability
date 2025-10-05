@@ -1,1 +1,337 @@
-"""Visualization functions for diving risk analysis."""import matplotlib.pyplot as pltimport seaborn as snsimport numpy as npimport pandas as pdfrom typing import Dict, Anydef setup_plotting_style(config: Dict[str, Any]) -> None:    """Configure matplotlib and seaborn plotting style.        Args:        config: Configuration dictionary    """    sns.set_style(config['plotting']['style'])    plt.rcParams['figure.figsize'] = config['plotting']['figure_size']def create_main_plots(df: pd.DataFrame, models: Dict[str, Any],                      roc_data: Dict[str, Dict], confusion_matrices: Dict[str, Dict],                     config: Dict[str, Any]):    """Create main analysis plots (ROC, probability curves, confusion matrix).        Args:        df: DataFrame with data        models: Dictionary of fitted models        roc_data: ROC curve data from get_roc_data        confusion_matrices: Confusion matrix data        config: Configuration dictionary            Returns:        Matplotlib figure object    """    fig = plt.figure(figsize=(18, 12))        # 1. ROC Curves    ax1 = plt.subplot(2, 3, 1)    for model_name, roc_info in roc_data.items():        ax1.plot(roc_info['fpr'], roc_info['tpr'],                 label=f"{model_name} (AUC = {roc_info['auc']:.3f})",                 linewidth=2)        ax1.plot([0, 1], [0, 1], 'k--', linewidth=1)    ax1.set_xlabel('False Positive Rate')    ax1.set_ylabel('True Positive Rate')    ax1.set_title('ROC Curves Comparison', fontweight='bold')    ax1.legend(loc='lower right')    ax1.grid(alpha=0.3)        # Get full logit model for probability plots    logit_full = models.get('Full Logit', list(models.values())[0])        # 2. Predicted Probability vs Depth    ax2 = plt.subplot(2, 3, 2)    depth_range = np.linspace(df['MaxDepth_m'].min(), df['MaxDepth_m'].max(), 100)    pred_data = _create_depth_prediction_data(df, depth_range)    pred_probs = logit_full.predict(pred_data)        ax2.plot(depth_range, pred_probs, linewidth=2)    ax2.fill_between(depth_range, 0, pred_probs, alpha=0.3)    ax2.set_xlabel('Maximum Depth (m)')    ax2.set_ylabel('Predicted Incident Probability')    ax2.set_title('Risk vs Depth (means; safety stop)', fontweight='bold')    ax2.grid(alpha=0.3)        # 3. Predicted Probability vs Bottom Time    ax3 = plt.subplot(2, 3, 3)    time_range = np.linspace(df['BottomTime_min'].min(), df['BottomTime_min'].max(), 100)    pred_data_time = _create_time_prediction_data(df, time_range)    pred_probs_time = logit_full.predict(pred_data_time)        ax3.plot(time_range, pred_probs_time, linewidth=2)    ax3.fill_between(time_range, 0, pred_probs_time, alpha=0.3)    ax3.set_xlabel('Bottom Time (min)')    ax3.set_ylabel('Predicted Incident Probability')    ax3.set_title('Risk vs Bottom Time (mean depth; safety stop)', fontweight='bold')    ax3.grid(alpha=0.3)        # 4. Interaction Effect: Depth × Bottom Time    ax4 = plt.subplot(2, 3, 4)    depths_to_plot = config['plotting']['depths_for_interaction']    time_range_int = np.linspace(10, 70, 100)        for depth_val in depths_to_plot:        pred_data_int = _create_interaction_prediction_data(df, depth_val, time_range_int)        pred_probs_int = logit_full.predict(pred_data_int)        ax4.plot(time_range_int, pred_probs_int, linewidth=2, label=f'{depth_val} m')        ax4.set_xlabel('Bottom Time (min)')    ax4.set_ylabel('Predicted Incident Probability')    ax4.set_title('Depth × Bottom Time Interaction', fontweight='bold')    ax4.legend()    ax4.grid(alpha=0.3)        # 5. Safety Stop Effect by Depth    ax5 = plt.subplot(2, 3, 5)    depth_range_ss = np.linspace(df['MaxDepth_m'].min(), df['MaxDepth_m'].max(), 50)        for ss_val, ss_label in [(0, 'No Safety Stop'), (1, 'With Safety Stop')]:        pred_data_ss = _create_safety_stop_prediction_data(df, depth_range_ss, ss_val)        pred_probs_ss = logit_full.predict(pred_data_ss)        ax5.plot(depth_range_ss, pred_probs_ss, linewidth=2, label=ss_label)        ax5.set_xlabel('Maximum Depth (m)')    ax5.set_ylabel('Predicted Incident Probability')    ax5.set_title('Safety Stop Effect by Depth', fontweight='bold')    ax5.legend()    ax5.grid(alpha=0.3)        # 6. Confusion Matrix Heatmap (Full Logit)    ax6 = plt.subplot(2, 3, 6)    cm = confusion_matrices['Full Logit']['confusion_matrix']    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax6,                xticklabels=['Predicted No', 'Predicted Yes'],                yticklabels=['Actual No', 'Actual Yes'])    ax6.set_title('Confusion Matrix (Full Logit)', fontweight='bold')        plt.tight_layout()    return figdef create_partial_dependence_plots(df: pd.DataFrame, model,                                     config: Dict[str, Any]):    """Create partial dependence plots for key variables.        Args:        df: DataFrame with data        model: Fitted model (typically full logit)        config: Configuration dictionary            Returns:        Matplotlib figure object    """    fig, axes = plt.subplots(2, 2, figsize=(14, 10))        continuous_vars = [        ('MaxDepth_m', 'Maximum Depth (m)'),        ('BottomTime_min', 'Bottom Time (min)'),        ('AscentRate_m_per_min', 'Ascent Rate (m/min)'),    ]        for idx, (var, label) in enumerate(continuous_vars):        row, col = idx // 2, idx % 2        ax = axes[row, col]        var_range = np.linspace(df[var].min(), df[var].max(), 100)                if var == 'MaxDepth_m':            pred_df = _create_depth_prediction_data(df, var_range)        elif var == 'BottomTime_min':            pred_df = _create_time_prediction_data(df, var_range)        else:  # AscentRate_m_per_min            pred_df = _create_ascent_prediction_data(df, var_range)                pred_probs_pd = model.predict(pred_df)        ax.plot(var_range, pred_probs_pd, linewidth=2.5)        ax.fill_between(var_range, 0, pred_probs_pd, alpha=0.3)        ax.set_xlabel(label)        ax.set_ylabel('Predicted Incident Probability')        ax.set_title(f'Partial Dependence: {label}', fontweight='bold')        ax.grid(alpha=0.3)        # NDL violation effect bar    ax = axes[1, 1]    categories = ['No NDL Violation', 'NDL Violation']    probs_ndl = []        for ndl_val in [0, 1]:        pred_df_ndl = pd.DataFrame({            'MaxDepth_m': [df['MaxDepth_m'].mean()],            'MaxDepth_m_sq': [df['MaxDepth_m'].mean()**2],            'BottomTime_min': [df['BottomTime_min'].mean()],            'AscentRate_m_per_min': [df['AscentRate_m_per_min'].mean()],            'SafetyStop': [1],            'NDL_Violation': [ndl_val],            'Depth_x_Time': [df['MaxDepth_m'].mean() * df['BottomTime_min'].mean()],            'Nitrox': [0]        })        pred_df_ndl['I(MaxDepth_m ** 2)'] = pred_df_ndl['MaxDepth_m_sq']        pred_df_ndl['MaxDepth_m:BottomTime_min'] = pred_df_ndl['Depth_x_Time']        probs_ndl.append(float(model.predict(pred_df_ndl)[0]))        bars = ax.bar(categories, probs_ndl, color=['#6ab04c', '#eb4d4b'],                   alpha=0.8, edgecolor='black')    ax.set_ylabel('Predicted Incident Probability')    ax.set_title('NDL Violation Effect', fontweight='bold')    ax.grid(alpha=0.3, axis='y')        for bar, prob in zip(bars, probs_ndl):        ax.text(bar.get_x() + bar.get_width()/2., bar.get_height(),                f'{prob:.3f}', ha='center', va='bottom', fontweight='bold')        plt.tight_layout()    return figdef create_residual_plots(df: pd.DataFrame, model):    """Create residual diagnostic plots.        Args:        df: DataFrame with data        model: Fitted model            Returns:        Matplotlib figure object    """    from scipy import stats        pearson_resid = model.resid_pearson    pred_prob = model.predict()        fig, axes = plt.subplots(2, 2, figsize=(14, 10))        # Residuals vs Fitted Values    ax = axes[0, 0]    ax.scatter(pred_prob, pearson_resid, alpha=0.5, s=20)    ax.axhline(y=0, color='r', linestyle='--', linewidth=2)    ax.set_xlabel('Fitted Probability')    ax.set_ylabel('Pearson Residuals')    ax.set_title('Residuals vs Fitted Values', fontweight='bold')    ax.grid(alpha=0.3)        # Residuals vs Depth    ax = axes[0, 1]    ax.scatter(df['MaxDepth_m'], pearson_resid, alpha=0.5, s=20, c='coral')    ax.axhline(y=0, color='r', linestyle='--', linewidth=2)    ax.set_xlabel('Maximum Depth (m)')    ax.set_ylabel('Pearson Residuals')    ax.set_title('Residuals vs Depth', fontweight='bold')    ax.grid(alpha=0.3)        # Residuals vs Bottom Time    ax = axes[1, 0]    ax.scatter(df['BottomTime_min'], pearson_resid, alpha=0.5, s=20, c='steelblue')    ax.axhline(y=0, color='r', linestyle='--', linewidth=2)    ax.set_xlabel('Bottom Time (min)')    ax.set_ylabel('Pearson Residuals')    ax.set_title('Residuals vs Bottom Time', fontweight='bold')    ax.grid(alpha=0.3)        # Q-Q Plot    ax = axes[1, 1]    stats.probplot(pearson_resid, dist="norm", plot=ax)    ax.set_title('Q-Q Plot of Pearson Residuals', fontweight='bold')    ax.grid(alpha=0.3)        plt.tight_layout()    return fig# Helper functions for creating prediction datadef _create_depth_prediction_data(df: pd.DataFrame, depth_range: np.ndarray) -> pd.DataFrame:    """Create prediction data varying depth."""    pred_data = pd.DataFrame({        'MaxDepth_m': depth_range,        'MaxDepth_m_sq': depth_range**2,        'BottomTime_min': df['BottomTime_min'].mean(),        'AscentRate_m_per_min': df['AscentRate_m_per_min'].mean(),        'SafetyStop': 1,        'NDL_Violation': 0,        'Depth_x_Time': depth_range * df['BottomTime_min'].mean(),        'Nitrox': 0    })    pred_data['I(MaxDepth_m ** 2)'] = pred_data['MaxDepth_m_sq']    pred_data['MaxDepth_m:BottomTime_min'] = pred_data['Depth_x_Time']    return pred_datadef _create_time_prediction_data(df: pd.DataFrame, time_range: np.ndarray) -> pd.DataFrame:    """Create prediction data varying bottom time."""    mean_depth = df['MaxDepth_m'].mean()    pred_data = pd.DataFrame({        'MaxDepth_m': mean_depth,        'MaxDepth_m_sq': mean_depth**2,        'BottomTime_min': time_range,        'AscentRate_m_per_min': df['AscentRate_m_per_min'].mean(),        'SafetyStop': 1,        'NDL_Violation': 0,        'Depth_x_Time': mean_depth * time_range,        'Nitrox': 0    })    pred_data['I(MaxDepth_m ** 2)'] = pred_data['MaxDepth_m_sq']    pred_data['MaxDepth_m:BottomTime_min'] = pred_data['Depth_x_Time']    return pred_datadef _create_ascent_prediction_data(df: pd.DataFrame, ascent_range: np.ndarray) -> pd.DataFrame:    """Create prediction data varying ascent rate."""    pred_data = pd.DataFrame({        'MaxDepth_m': df['MaxDepth_m'].mean(),        'MaxDepth_m_sq': df['MaxDepth_m'].mean()**2,        'BottomTime_min': df['BottomTime_min'].mean(),        'AscentRate_m_per_min': ascent_range,        'SafetyStop': df['SafetyStop'].mean(),        'NDL_Violation': 0,        'Depth_x_Time': df['MaxDepth_m'].mean() * df['BottomTime_min'].mean(),        'Nitrox': 0    })    pred_data['I(MaxDepth_m ** 2)'] = pred_data['MaxDepth_m_sq']    pred_data['MaxDepth_m:BottomTime_min'] = pred_data['Depth_x_Time']    return pred_datadef _create_interaction_prediction_data(df: pd.DataFrame, depth_val: float,                                        time_range: np.ndarray) -> pd.DataFrame:    """Create prediction data for depth × time interaction."""    pred_data = pd.DataFrame({        'MaxDepth_m': depth_val,        'MaxDepth_m_sq': depth_val**2,        'BottomTime_min': time_range,        'AscentRate_m_per_min': df['AscentRate_m_per_min'].mean(),        'SafetyStop': 1,        'NDL_Violation': 0,        'Depth_x_Time': depth_val * time_range,        'Nitrox': 0    })    pred_data['I(MaxDepth_m ** 2)'] = pred_data['MaxDepth_m_sq']    pred_data['MaxDepth_m:BottomTime_min'] = pred_data['Depth_x_Time']    return pred_datadef _create_safety_stop_prediction_data(df: pd.DataFrame, depth_range: np.ndarray,                                        ss_val: int) -> pd.DataFrame:    """Create prediction data for safety stop effect."""    pred_data = pd.DataFrame({        'MaxDepth_m': depth_range,        'MaxDepth_m_sq': depth_range**2,        'BottomTime_min': df['BottomTime_min'].mean(),        'AscentRate_m_per_min': df['AscentRate_m_per_min'].mean(),        'SafetyStop': ss_val,        'NDL_Violation': 0,        'Depth_x_Time': depth_range * df['BottomTime_min'].mean(),        'Nitrox': 0    })    pred_data['I(MaxDepth_m ** 2)'] = pred_data['MaxDepth_m_sq']    pred_data['MaxDepth_m:BottomTime_min'] = pred_data['Depth_x_Time']    return pred_data
+"""Visualization functions for diving risk analysis."""
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+import pandas as pd
+from typing import Dict, Any
+
+
+def setup_plotting_style(config: Dict[str, Any]) -> None:
+    """Configure matplotlib and seaborn plotting style.
+    
+    Args:
+        config: Configuration dictionary
+    """
+    sns.set_style(config['plotting']['style'])
+    plt.rcParams['figure.figsize'] = config['plotting']['figure_size']
+
+
+def create_main_plots(df: pd.DataFrame, models: Dict[str, Any], 
+                     roc_data: Dict[str, Dict], confusion_matrices: Dict[str, Dict],
+                     config: Dict[str, Any]):
+    """Create main analysis plots (ROC, probability curves, confusion matrix).
+    
+    Args:
+        df: DataFrame with data
+        models: Dictionary of fitted models
+        roc_data: ROC curve data from get_roc_data
+        confusion_matrices: Confusion matrix data
+        config: Configuration dictionary
+        
+    Returns:
+        Matplotlib figure object
+    """
+    fig = plt.figure(figsize=(18, 12))
+    
+    # 1. ROC Curves
+    ax1 = plt.subplot(2, 3, 1)
+    for model_name, roc_info in roc_data.items():
+        ax1.plot(roc_info['fpr'], roc_info['tpr'], 
+                label=f"{model_name} (AUC = {roc_info['auc']:.3f})", 
+                linewidth=2)
+    
+    ax1.plot([0, 1], [0, 1], 'k--', linewidth=1)
+    ax1.set_xlabel('False Positive Rate')
+    ax1.set_ylabel('True Positive Rate')
+    ax1.set_title('ROC Curves Comparison', fontweight='bold')
+    ax1.legend(loc='lower right')
+    ax1.grid(alpha=0.3)
+    
+    # Get full logit model for probability plots
+    logit_full = models.get('Full Logit', list(models.values())[0])
+    
+    # 2. Predicted Probability vs Depth
+    ax2 = plt.subplot(2, 3, 2)
+    depth_range = np.linspace(df['MaxDepth_m'].min(), df['MaxDepth_m'].max(), 100)
+    pred_data = _create_depth_prediction_data(df, depth_range)
+    pred_probs = logit_full.predict(pred_data)
+    
+    ax2.plot(depth_range, pred_probs, linewidth=2)
+    ax2.fill_between(depth_range, 0, pred_probs, alpha=0.3)
+    ax2.set_xlabel('Maximum Depth (m)')
+    ax2.set_ylabel('Predicted Incident Probability')
+    ax2.set_title('Risk vs Depth (means; safety stop)', fontweight='bold')
+    ax2.grid(alpha=0.3)
+    
+    # 3. Predicted Probability vs Bottom Time
+    ax3 = plt.subplot(2, 3, 3)
+    time_range = np.linspace(df['BottomTime_min'].min(), df['BottomTime_min'].max(), 100)
+    pred_data_time = _create_time_prediction_data(df, time_range)
+    pred_probs_time = logit_full.predict(pred_data_time)
+    
+    ax3.plot(time_range, pred_probs_time, linewidth=2)
+    ax3.fill_between(time_range, 0, pred_probs_time, alpha=0.3)
+    ax3.set_xlabel('Bottom Time (min)')
+    ax3.set_ylabel('Predicted Incident Probability')
+    ax3.set_title('Risk vs Bottom Time (mean depth; safety stop)', fontweight='bold')
+    ax3.grid(alpha=0.3)
+    
+    # 4. Interaction Effect: Depth × Bottom Time
+    ax4 = plt.subplot(2, 3, 4)
+    depths_to_plot = config['plotting']['depths_for_interaction']
+    time_range_int = np.linspace(10, 70, 100)
+    
+    for depth_val in depths_to_plot:
+        pred_data_int = _create_interaction_prediction_data(df, depth_val, time_range_int)
+        pred_probs_int = logit_full.predict(pred_data_int)
+        ax4.plot(time_range_int, pred_probs_int, linewidth=2, label=f'{depth_val} m')
+    
+    ax4.set_xlabel('Bottom Time (min)')
+    ax4.set_ylabel('Predicted Incident Probability')
+    ax4.set_title('Depth × Bottom Time Interaction', fontweight='bold')
+    ax4.legend()
+    ax4.grid(alpha=0.3)
+    
+    # 5. Safety Stop Effect by Depth
+    ax5 = plt.subplot(2, 3, 5)
+    depth_range_ss = np.linspace(df['MaxDepth_m'].min(), df['MaxDepth_m'].max(), 50)
+    
+    for ss_val, ss_label in [(0, 'No Safety Stop'), (1, 'With Safety Stop')]:
+        pred_data_ss = _create_safety_stop_prediction_data(df, depth_range_ss, ss_val)
+        pred_probs_ss = logit_full.predict(pred_data_ss)
+        ax5.plot(depth_range_ss, pred_probs_ss, linewidth=2, label=ss_label)
+    
+    ax5.set_xlabel('Maximum Depth (m)')
+    ax5.set_ylabel('Predicted Incident Probability')
+    ax5.set_title('Safety Stop Effect by Depth', fontweight='bold')
+    ax5.legend()
+    ax5.grid(alpha=0.3)
+    
+    # 6. Confusion Matrix Heatmap (Full Logit)
+    ax6 = plt.subplot(2, 3, 6)
+    cm = confusion_matrices['Full Logit']['confusion_matrix']
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax6,
+                xticklabels=['Predicted No', 'Predicted Yes'],
+                yticklabels=['Actual No', 'Actual Yes'])
+    ax6.set_title('Confusion Matrix (Full Logit)', fontweight='bold')
+    
+    plt.tight_layout()
+    return fig
+
+
+def create_partial_dependence_plots(df: pd.DataFrame, model, 
+                                    config: Dict[str, Any]):
+    """Create partial dependence plots for key variables.
+    
+    Args:
+        df: DataFrame with data
+        model: Fitted model (typically full logit)
+        config: Configuration dictionary
+        
+    Returns:
+        Matplotlib figure object
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    
+    continuous_vars = [
+        ('MaxDepth_m', 'Maximum Depth (m)'),
+        ('BottomTime_min', 'Bottom Time (min)'),
+        ('AscentRate_m_per_min', 'Ascent Rate (m/min)'),
+    ]
+    
+    for idx, (var, label) in enumerate(continuous_vars):
+        row, col = idx // 2, idx % 2
+        ax = axes[row, col]
+        var_range = np.linspace(df[var].min(), df[var].max(), 100)
+        
+        if var == 'MaxDepth_m':
+            pred_df = _create_depth_prediction_data(df, var_range)
+        elif var == 'BottomTime_min':
+            pred_df = _create_time_prediction_data(df, var_range)
+        else:  # AscentRate_m_per_min
+            pred_df = _create_ascent_prediction_data(df, var_range)
+        
+        pred_probs_pd = model.predict(pred_df)
+        ax.plot(var_range, pred_probs_pd, linewidth=2.5)
+        ax.fill_between(var_range, 0, pred_probs_pd, alpha=0.3)
+        ax.set_xlabel(label)
+        ax.set_ylabel('Predicted Incident Probability')
+        ax.set_title(f'Partial Dependence: {label}', fontweight='bold')
+        ax.grid(alpha=0.3)
+    
+    # NDL violation effect bar
+    ax = axes[1, 1]
+    categories = ['No NDL Violation', 'NDL Violation']
+    probs_ndl = []
+    
+    for ndl_val in [0, 1]:
+        pred_df_ndl = pd.DataFrame({
+            'MaxDepth_m': [df['MaxDepth_m'].mean()],
+            'MaxDepth_m_sq': [df['MaxDepth_m'].mean()**2],
+            'BottomTime_min': [df['BottomTime_min'].mean()],
+            'AscentRate_m_per_min': [df['AscentRate_m_per_min'].mean()],
+            'SafetyStop': [1],
+            'NDL_Violation': [ndl_val],
+            'Depth_x_Time': [df['MaxDepth_m'].mean() * df['BottomTime_min'].mean()],
+            'Nitrox': [0]
+        })
+        pred_df_ndl['I(MaxDepth_m ** 2)'] = pred_df_ndl['MaxDepth_m_sq']
+        pred_df_ndl['MaxDepth_m:BottomTime_min'] = pred_df_ndl['Depth_x_Time']
+        probs_ndl.append(float(model.predict(pred_df_ndl)[0]))
+    
+    bars = ax.bar(categories, probs_ndl, color=['#6ab04c', '#eb4d4b'], 
+                  alpha=0.8, edgecolor='black')
+    ax.set_ylabel('Predicted Incident Probability')
+    ax.set_title('NDL Violation Effect', fontweight='bold')
+    ax.grid(alpha=0.3, axis='y')
+    
+    for bar, prob in zip(bars, probs_ndl):
+        ax.text(bar.get_x() + bar.get_width()/2., bar.get_height(),
+                f'{prob:.3f}', ha='center', va='bottom', fontweight='bold')
+    
+    plt.tight_layout()
+    return fig
+
+
+def create_residual_plots(df: pd.DataFrame, model):
+    """Create residual diagnostic plots.
+    
+    Args:
+        df: DataFrame with data
+        model: Fitted model
+        
+    Returns:
+        Matplotlib figure object
+    """
+    from scipy import stats
+    
+    pearson_resid = model.resid_pearson
+    pred_prob = model.predict()
+    
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    
+    # Residuals vs Fitted Values
+    ax = axes[0, 0]
+    ax.scatter(pred_prob, pearson_resid, alpha=0.5, s=20)
+    ax.axhline(y=0, color='r', linestyle='--', linewidth=2)
+    ax.set_xlabel('Fitted Probability')
+    ax.set_ylabel('Pearson Residuals')
+    ax.set_title('Residuals vs Fitted Values', fontweight='bold')
+    ax.grid(alpha=0.3)
+    
+    # Residuals vs Depth
+    ax = axes[0, 1]
+    ax.scatter(df['MaxDepth_m'], pearson_resid, alpha=0.5, s=20, c='coral')
+    ax.axhline(y=0, color='r', linestyle='--', linewidth=2)
+    ax.set_xlabel('Maximum Depth (m)')
+    ax.set_ylabel('Pearson Residuals')
+    ax.set_title('Residuals vs Depth', fontweight='bold')
+    ax.grid(alpha=0.3)
+    
+    # Residuals vs Bottom Time
+    ax = axes[1, 0]
+    ax.scatter(df['BottomTime_min'], pearson_resid, alpha=0.5, s=20, c='steelblue')
+    ax.axhline(y=0, color='r', linestyle='--', linewidth=2)
+    ax.set_xlabel('Bottom Time (min)')
+    ax.set_ylabel('Pearson Residuals')
+    ax.set_title('Residuals vs Bottom Time', fontweight='bold')
+    ax.grid(alpha=0.3)
+    
+    # Q-Q Plot
+    ax = axes[1, 1]
+    stats.probplot(pearson_resid, dist="norm", plot=ax)
+    ax.set_title('Q-Q Plot of Pearson Residuals', fontweight='bold')
+    ax.grid(alpha=0.3)
+    
+    plt.tight_layout()
+    return fig
+
+
+# Helper functions for creating prediction data
+def _create_depth_prediction_data(df: pd.DataFrame, depth_range: np.ndarray) -> pd.DataFrame:
+    """Create prediction data varying depth."""
+    pred_data = pd.DataFrame({
+        'MaxDepth_m': depth_range,
+        'MaxDepth_m_sq': depth_range**2,
+        'BottomTime_min': df['BottomTime_min'].mean(),
+        'AscentRate_m_per_min': df['AscentRate_m_per_min'].mean(),
+        'SafetyStop': 1,
+        'NDL_Violation': 0,
+        'Depth_x_Time': depth_range * df['BottomTime_min'].mean(),
+        'Nitrox': 0
+    })
+    pred_data['I(MaxDepth_m ** 2)'] = pred_data['MaxDepth_m_sq']
+    pred_data['MaxDepth_m:BottomTime_min'] = pred_data['Depth_x_Time']
+    return pred_data
+
+
+def _create_time_prediction_data(df: pd.DataFrame, time_range: np.ndarray) -> pd.DataFrame:
+    """Create prediction data varying bottom time."""
+    mean_depth = df['MaxDepth_m'].mean()
+    pred_data = pd.DataFrame({
+        'MaxDepth_m': mean_depth,
+        'MaxDepth_m_sq': mean_depth**2,
+        'BottomTime_min': time_range,
+        'AscentRate_m_per_min': df['AscentRate_m_per_min'].mean(),
+        'SafetyStop': 1,
+        'NDL_Violation': 0,
+        'Depth_x_Time': mean_depth * time_range,
+        'Nitrox': 0
+    })
+    pred_data['I(MaxDepth_m ** 2)'] = pred_data['MaxDepth_m_sq']
+    pred_data['MaxDepth_m:BottomTime_min'] = pred_data['Depth_x_Time']
+    return pred_data
+
+
+def _create_ascent_prediction_data(df: pd.DataFrame, ascent_range: np.ndarray) -> pd.DataFrame:
+    """Create prediction data varying ascent rate."""
+    pred_data = pd.DataFrame({
+        'MaxDepth_m': df['MaxDepth_m'].mean(),
+        'MaxDepth_m_sq': df['MaxDepth_m'].mean()**2,
+        'BottomTime_min': df['BottomTime_min'].mean(),
+        'AscentRate_m_per_min': ascent_range,
+        'SafetyStop': df['SafetyStop'].mean(),
+        'NDL_Violation': 0,
+        'Depth_x_Time': df['MaxDepth_m'].mean() * df['BottomTime_min'].mean(),
+        'Nitrox': 0
+    })
+    pred_data['I(MaxDepth_m ** 2)'] = pred_data['MaxDepth_m_sq']
+    pred_data['MaxDepth_m:BottomTime_min'] = pred_data['Depth_x_Time']
+    return pred_data
+
+
+def _create_interaction_prediction_data(df: pd.DataFrame, depth_val: float, 
+                                       time_range: np.ndarray) -> pd.DataFrame:
+    """Create prediction data for depth × time interaction."""
+    pred_data = pd.DataFrame({
+        'MaxDepth_m': depth_val,
+        'MaxDepth_m_sq': depth_val**2,
+        'BottomTime_min': time_range,
+        'AscentRate_m_per_min': df['AscentRate_m_per_min'].mean(),
+        'SafetyStop': 1,
+        'NDL_Violation': 0,
+        'Depth_x_Time': depth_val * time_range,
+        'Nitrox': 0
+    })
+    pred_data['I(MaxDepth_m ** 2)'] = pred_data['MaxDepth_m_sq']
+    pred_data['MaxDepth_m:BottomTime_min'] = pred_data['Depth_x_Time']
+    return pred_data
+
+
+def _create_safety_stop_prediction_data(df: pd.DataFrame, depth_range: np.ndarray, 
+                                       ss_val: int) -> pd.DataFrame:
+    """Create prediction data for safety stop effect."""
+    pred_data = pd.DataFrame({
+        'MaxDepth_m': depth_range,
+        'MaxDepth_m_sq': depth_range**2,
+        'BottomTime_min': df['BottomTime_min'].mean(),
+        'AscentRate_m_per_min': df['AscentRate_m_per_min'].mean(),
+        'SafetyStop': ss_val,
+        'NDL_Violation': 0,
+        'Depth_x_Time': depth_range * df['BottomTime_min'].mean(),
+        'Nitrox': 0
+    })
+    pred_data['I(MaxDepth_m ** 2)'] = pred_data['MaxDepth_m_sq']
+    pred_data['MaxDepth_m:BottomTime_min'] = pred_data['Depth_x_Time']
+    return pred_data

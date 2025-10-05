@@ -1,1 +1,191 @@
-"""Model estimation, marginal effects, and odds ratios."""import pandas as pdimport numpy as npimport statsmodels.formula.api as smffrom typing import Dict, Any, Tuplefrom statsmodels.stats.outliers_influence import variance_inflation_factordef fit_baseline_logit(df: pd.DataFrame, config: Dict[str, Any]):    """Fit baseline logistic regression model.        Args:        df: DataFrame with features        config: Configuration dictionary            Returns:        Fitted statsmodels model    """    formula = config['model_formulas']['baseline']    model = smf.logit(formula, data=df).fit(disp=0)    return modeldef fit_full_logit(df: pd.DataFrame, config: Dict[str, Any]):    """Fit full logistic regression model with interactions.        Args:        df: DataFrame with features        config: Configuration dictionary            Returns:        Fitted statsmodels model    """    formula = config['model_formulas']['full']    model = smf.logit(formula, data=df).fit(disp=0)    return modeldef fit_full_probit(df: pd.DataFrame, config: Dict[str, Any]):    """Fit full probit model.        Args:        df: DataFrame with features        config: Configuration dictionary            Returns:        Fitted statsmodels model    """    formula = config['model_formulas']['full']    model = smf.probit(formula, data=df).fit(disp=0)    return modeldef fit_robust_logit(df: pd.DataFrame, config: Dict[str, Any]):    """Fit logistic regression with robust (HC3) standard errors.        Args:        df: DataFrame with features        config: Configuration dictionary            Returns:        Fitted statsmodels model    """    formula = config['model_formulas']['full']    model = smf.logit(formula, data=df).fit(cov_type='HC3', disp=0)    return modeldef calculate_marginal_effects(model) -> pd.DataFrame:    """Calculate average marginal effects.        Args:        model: Fitted statsmodels model            Returns:        DataFrame with marginal effects and statistics    """    marginal_effects = model.get_margeff(at='mean')        me_df = pd.DataFrame({        'Variable': marginal_effects.margeff_names,        'Marginal Effect': marginal_effects.margeff,        'Std Error': marginal_effects.margeff_se,        'P-value': marginal_effects.pvalues    })        return me_dfdef calculate_odds_ratios(model) -> pd.DataFrame:    """Calculate odds ratios with confidence intervals.        Args:        model: Fitted statsmodels model            Returns:        DataFrame with odds ratios and CIs    """    ci = model.conf_int()        odds_ratios = pd.DataFrame({        'Variable': model.params.index,        'Coefficient': model.params.values,        'Odds Ratio': np.exp(model.params.values),        'CI_Lower': np.exp(ci[0].values),        'CI_Upper': np.exp(ci[1].values),        'P-value': model.pvalues.values    })        return odds_ratiosdef calculate_vif(df: pd.DataFrame, feature_names: list) -> pd.DataFrame:    """Calculate Variance Inflation Factors for multicollinearity check.        Args:        df: DataFrame with features        feature_names: List of feature column names            Returns:        DataFrame with VIF scores    """    X_vif = df[feature_names].copy()    X_vif = X_vif.assign(const=1.0)        vif_data = pd.DataFrame({        "Variable": X_vif.columns,        "VIF": [variance_inflation_factor(X_vif.values, i)                 for i in range(X_vif.shape[1])]    }).sort_values('VIF', ascending=False)        # Remove const column    vif_data = vif_data[vif_data['Variable'] != 'const']        return vif_datadef create_model_comparison(models: Dict[str, Any]) -> pd.DataFrame:    """Create comparison table of model fit statistics.        Args:        models: Dictionary of model name -> fitted model            Returns:        DataFrame with comparison metrics    """    comparison = pd.DataFrame({        'Model': list(models.keys()),        'Log-Likelihood': [m.llf for m in models.values()],        'AIC': [m.aic for m in models.values()],        'BIC': [m.bic for m in models.values()],        'Pseudo R²': [m.prsquared for m in models.values()],        'N Parameters': [len(m.params) for m in models.values()]    })        return comparisondef likelihood_ratio_test(model_restricted, model_full) -> Tuple[float, int, float]:    """Perform likelihood ratio test comparing two nested models.        Args:        model_restricted: Restricted (simpler) model        model_full: Full (more complex) model            Returns:        Tuple of (LR statistic, degrees of freedom, p-value)    """    from scipy import stats        lr_stat = 2 * (model_full.llf - model_restricted.llf)    df_lr = len(model_full.params) - len(model_restricted.params)    p_value = stats.chi2.sf(lr_stat, df_lr)        return lr_stat, df_lr, p_valuedef get_residuals(model) -> Tuple[np.ndarray, np.ndarray]:    """Extract Pearson and deviance residuals.        Args:        model: Fitted statsmodels model            Returns:        Tuple of (Pearson residuals, deviance residuals)    """    pearson_resid = model.resid_pearson    deviance_resid = model.resid_deviance        return pearson_resid, deviance_resid
+"""Model estimation, marginal effects, and odds ratios."""
+
+import pandas as pd
+import numpy as np
+import statsmodels.formula.api as smf
+from typing import Dict, Any, Tuple
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+
+
+def fit_baseline_logit(df: pd.DataFrame, config: Dict[str, Any]):
+    """Fit baseline logistic regression model.
+    
+    Args:
+        df: DataFrame with features
+        config: Configuration dictionary
+        
+    Returns:
+        Fitted statsmodels model
+    """
+    formula = config['model_formulas']['baseline']
+    model = smf.logit(formula, data=df).fit(disp=0)
+    return model
+
+
+def fit_full_logit(df: pd.DataFrame, config: Dict[str, Any]):
+    """Fit full logistic regression model with interactions.
+    
+    Args:
+        df: DataFrame with features
+        config: Configuration dictionary
+        
+    Returns:
+        Fitted statsmodels model
+    """
+    formula = config['model_formulas']['full']
+    model = smf.logit(formula, data=df).fit(disp=0)
+    return model
+
+
+def fit_full_probit(df: pd.DataFrame, config: Dict[str, Any]):
+    """Fit full probit model.
+    
+    Args:
+        df: DataFrame with features
+        config: Configuration dictionary
+        
+    Returns:
+        Fitted statsmodels model
+    """
+    formula = config['model_formulas']['full']
+    model = smf.probit(formula, data=df).fit(disp=0)
+    return model
+
+
+def fit_robust_logit(df: pd.DataFrame, config: Dict[str, Any]):
+    """Fit logistic regression with robust (HC3) standard errors.
+    
+    Args:
+        df: DataFrame with features
+        config: Configuration dictionary
+        
+    Returns:
+        Fitted statsmodels model
+    """
+    formula = config['model_formulas']['full']
+    model = smf.logit(formula, data=df).fit(cov_type='HC3', disp=0)
+    return model
+
+
+def calculate_marginal_effects(model) -> pd.DataFrame:
+    """Calculate average marginal effects.
+    
+    Args:
+        model: Fitted statsmodels model
+        
+    Returns:
+        DataFrame with marginal effects and statistics
+    """
+    marginal_effects = model.get_margeff(at='mean')
+    
+    me_df = pd.DataFrame({
+        'Variable': marginal_effects.margeff_names,
+        'Marginal Effect': marginal_effects.margeff,
+        'Std Error': marginal_effects.margeff_se,
+        'P-value': marginal_effects.pvalues
+    })
+    
+    return me_df
+
+
+def calculate_odds_ratios(model) -> pd.DataFrame:
+    """Calculate odds ratios with confidence intervals.
+    
+    Args:
+        model: Fitted statsmodels model
+        
+    Returns:
+        DataFrame with odds ratios and CIs
+    """
+    ci = model.conf_int()
+    
+    odds_ratios = pd.DataFrame({
+        'Variable': model.params.index,
+        'Coefficient': model.params.values,
+        'Odds Ratio': np.exp(model.params.values),
+        'CI_Lower': np.exp(ci[0].values),
+        'CI_Upper': np.exp(ci[1].values),
+        'P-value': model.pvalues.values
+    })
+    
+    return odds_ratios
+
+
+def calculate_vif(df: pd.DataFrame, feature_names: list) -> pd.DataFrame:
+    """Calculate Variance Inflation Factors for multicollinearity check.
+    
+    Args:
+        df: DataFrame with features
+        feature_names: List of feature column names
+        
+    Returns:
+        DataFrame with VIF scores
+    """
+    X_vif = df[feature_names].copy()
+    X_vif = X_vif.assign(const=1.0)
+    
+    vif_data = pd.DataFrame({
+        "Variable": X_vif.columns,
+        "VIF": [variance_inflation_factor(X_vif.values, i) 
+                for i in range(X_vif.shape[1])]
+    }).sort_values('VIF', ascending=False)
+    
+    # Remove const column
+    vif_data = vif_data[vif_data['Variable'] != 'const']
+    
+    return vif_data
+
+
+def create_model_comparison(models: Dict[str, Any]) -> pd.DataFrame:
+    """Create comparison table of model fit statistics.
+    
+    Args:
+        models: Dictionary of model name -> fitted model
+        
+    Returns:
+        DataFrame with comparison metrics
+    """
+    comparison = pd.DataFrame({
+        'Model': list(models.keys()),
+        'Log-Likelihood': [m.llf for m in models.values()],
+        'AIC': [m.aic for m in models.values()],
+        'BIC': [m.bic for m in models.values()],
+        'Pseudo R²': [m.prsquared for m in models.values()],
+        'N Parameters': [len(m.params) for m in models.values()]
+    })
+    
+    return comparison
+
+
+def likelihood_ratio_test(model_restricted, model_full) -> Tuple[float, int, float]:
+    """Perform likelihood ratio test comparing two nested models.
+    
+    Args:
+        model_restricted: Restricted (simpler) model
+        model_full: Full (more complex) model
+        
+    Returns:
+        Tuple of (LR statistic, degrees of freedom, p-value)
+    """
+    from scipy import stats
+    
+    lr_stat = 2 * (model_full.llf - model_restricted.llf)
+    df_lr = len(model_full.params) - len(model_restricted.params)
+    p_value = stats.chi2.sf(lr_stat, df_lr)
+    
+    return lr_stat, df_lr, p_value
+
+
+def get_residuals(model) -> Tuple[np.ndarray, np.ndarray]:
+    """Extract Pearson and deviance residuals.
+    
+    Args:
+        model: Fitted statsmodels model
+        
+    Returns:
+        Tuple of (Pearson residuals, deviance residuals)
+    """
+    pearson_resid = model.resid_pearson
+    deviance_resid = model.resid_deviance
+    
+    return pearson_resid, deviance_resid
